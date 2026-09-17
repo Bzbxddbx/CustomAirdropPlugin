@@ -2,5 +2,10 @@ name: CustomAirdropPlugin
 version: '${version}'
 
 main: Bzbxddbx.customAirdropPlugin.CustomAirdropPlugin
-api-version: '1.21'
+api-version: '26.2'
 load: POSTWORLD
+
+commands:
+  airdropstart:
+    description: Start a custom airdrop event
+    usage: /airdropstart
