@@ -1,0 +1,6 @@
+name: CustomAirdropPlugin
+version: '${version}'
+
+main: Bzbxddbx.customAirdropPlugin.CustomAirdropPlugin
+api-version: '1.21'
+load: POSTWORLD
