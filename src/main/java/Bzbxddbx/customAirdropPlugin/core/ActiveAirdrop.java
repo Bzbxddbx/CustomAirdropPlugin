@@ -2,7 +2,8 @@ package Bzbxddbx.customAirdropPlugin.core;
 
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
 import Bzbxddbx.customAirdropPlugin.config.ConfigSettings;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -20,17 +21,17 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public final class ActiveAirdrop implements Airdrop {
 
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
 
     private final UUID id;
     private final Location location;
     private AirdropState state;
-    private TextDisplay textDisplay;
+    private TextDisplay hologram;
 
-    public ActiveAirdrop(UUID id, Location location, AirdropState state) {
-        this.id = id;
+    public ActiveAirdrop(Location location) {
+        this.id = UUID.randomUUID();
         this.location = location;
-        this.state = state;
+        this.state = AirdropState.WAITING;
     }
 
     @Override
@@ -48,25 +49,16 @@ public final class ActiveAirdrop implements Airdrop {
         return this.state;
     }
 
-    public void setState(AirdropState state) {
-        this.state = state;
-    }
-
-    public TextDisplay getTextDisplay() {
-        return this.textDisplay;
-    }
-
-    public void setTextDisplay(TextDisplay textDisplay) {
-        this.textDisplay = textDisplay;
-    }
-
     @Override
     public void spawn() {
         this.location.getBlock().setType(Material.CHEST);
+        this.state = AirdropState.ACTIVE;
         World world = this.location.getWorld();
-        Location displayLocation = this.location.clone().add(0.5, 1.2, 0.5);
-        this.textDisplay = world.spawn(displayLocation, TextDisplay.class, display -> {
-            display.text(LEGACY.deserialize("§6[Мистический сундук]§r Кликни для открытия"));
+        Location displayLocation = this.location.clone().add(0.5, 1.0, 0.5);
+        Component hologramText = MINI_MESSAGE.deserialize(
+                "<gold><b>[Мистический сундук]</b></gold>\n<gray>Кликни, чтобы открыть</gray>");
+        this.hologram = world.spawn(displayLocation, TextDisplay.class, display -> {
+            display.text(hologramText);
             display.setBillboard(Display.Billboard.CENTER);
             display.setLineWidth(400);
             display.setSeeThrough(true);
@@ -79,12 +71,8 @@ public final class ActiveAirdrop implements Airdrop {
             return;
         }
         World world = this.location.getWorld();
-        Location displayLocation = this.location.clone().add(0.5, 1.0, 0.5);
-        world.spawnParticle(Particle.FLAME, displayLocation, 40, 0.5, 0.5, 0.5, 0.05);
         world.playSound(this.location, Sound.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 1.0f, 1.0f);
-        if (this.textDisplay != null && this.textDisplay.isValid()) {
-            this.textDisplay.text(LEGACY.deserialize("§cОТКРЫТ"));
-        }
+        world.spawnParticle(Particle.FLAME, this.location.clone().add(0.5, 0.5, 0.5), 40, 0.5, 0.5, 0.5, 0.05);
         if (this.location.getBlock().getState() instanceof Chest chest) {
             List<Material> loot = ConfigSettings.defaults().loot();
             ThreadLocalRandom random = ThreadLocalRandom.current();
@@ -95,16 +83,18 @@ public final class ActiveAirdrop implements Airdrop {
                 chest.getInventory().setItem(random.nextInt(27), stack);
             }
         }
+        if (this.hologram != null && this.hologram.isValid()) {
+            this.hologram.text(MINI_MESSAGE.deserialize("<red><b>[ОТКРЫТ]</b></red>"));
+        }
         this.state = AirdropState.OPENED;
     }
 
     @Override
     public void remove() {
-        if (this.textDisplay != null && this.textDisplay.isValid()) {
-            this.textDisplay.remove();
+        if (this.hologram != null && this.hologram.isValid()) {
+            this.hologram.remove();
         }
-        this.textDisplay = null;
+        this.hologram = null;
         this.location.getBlock().setType(Material.AIR);
-        this.state = AirdropState.WAITING;
     }
 }

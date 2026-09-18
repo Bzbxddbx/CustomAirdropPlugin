@@ -1,41 +1,38 @@
 package Bzbxddbx.customAirdropPlugin.manager;
 
+import Bzbxddbx.customAirdropPlugin.CustomAirdropPlugin;
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
 import Bzbxddbx.customAirdropPlugin.api.AirdropManager;
 import Bzbxddbx.customAirdropPlugin.api.location.LocationSearcher;
-import Bzbxddbx.customAirdropPlugin.config.ConfigSettings;
 import Bzbxddbx.customAirdropPlugin.core.ActiveAirdrop;
-import Bzbxddbx.customAirdropPlugin.core.AirdropState;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Optional;
-import java.util.UUID;
 
-public final class EventManager implements AirdropManager, LocationSearcher {
+public final class EventManager implements AirdropManager {
 
-    private final JavaPlugin plugin;
-    private final ConfigSettings config = ConfigSettings.defaults();
+    private final CustomAirdropPlugin plugin;
+    private final LocationSearcher locationSearcher;
     private Airdrop activeAirdrop;
 
-    public EventManager(JavaPlugin plugin) {
+    public EventManager(CustomAirdropPlugin plugin, LocationSearcher locationSearcher) {
         this.plugin = plugin;
+        this.locationSearcher = locationSearcher;
     }
 
     @Override
     public void startEvent() {
         World world = Bukkit.getWorlds().getFirst();
-        this.findSafeLocation(world)
-            .thenAcceptAsync(location -> {
-                var airdrop = new ActiveAirdrop(UUID.randomUUID(), location, AirdropState.ACTIVE);
+        this.locationSearcher.findSafeLocation(world)
+            .thenAccept(location -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                var airdrop = new ActiveAirdrop(location);
                 this.activeAirdrop = airdrop;
                 airdrop.spawn();
-                Bukkit.getServer().broadcast(this.config.eventStartMessage());
-                Bukkit.getServer().broadcast(Component.text("Координаты аирдропа: X="
+                Bukkit.getServer().broadcast(Component.text("Мистический аирдроп начал падать! Координаты: X="
                         + location.getBlockX() + " Y=" + location.getBlockY() + " Z=" + location.getBlockZ()));
-            }, Bukkit.getScheduler().getMainThreadExecutor(this.plugin));
+            }));
     }
 
     @Override
@@ -43,6 +40,7 @@ public final class EventManager implements AirdropManager, LocationSearcher {
         if (this.activeAirdrop != null) {
             this.activeAirdrop.remove();
             this.activeAirdrop = null;
+            Bukkit.getServer().broadcast(Component.text("Аирдроп был принудительно удален!"));
         }
     }
 
