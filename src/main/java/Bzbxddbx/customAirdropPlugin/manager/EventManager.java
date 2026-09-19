@@ -30,10 +30,7 @@ public final class EventManager implements AirdropManager {
         World world = Bukkit.getWorlds().getFirst();
         this.locationSearcher.findSafeLocation(world)
             .thenAccept(location -> Bukkit.getScheduler().runTask(this.plugin, () -> {
-                var airdrop = new ActiveAirdrop(location,
-                        this.lootConfig.getContainer(),
-                        this.lootConfig.getMinSlots(),
-                        this.lootConfig.getMaxSlots());
+                var airdrop = new ActiveAirdrop(location, this.plugin.getLootConfig());
                 this.activeAirdrop = airdrop;
                 airdrop.spawn();
                 Bukkit.getServer().broadcast(Component.text("Мистический аирдроп начал падать! Координаты: X="

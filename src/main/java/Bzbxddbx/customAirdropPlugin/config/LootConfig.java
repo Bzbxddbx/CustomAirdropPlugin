@@ -1,5 +1,6 @@
 package Bzbxddbx.customAirdropPlugin.config;
 
+import Bzbxddbx.customAirdropPlugin.api.loot.LootProvider;
 import Bzbxddbx.customAirdropPlugin.core.loot.LootContainer;
 import Bzbxddbx.customAirdropPlugin.core.loot.LootItem;
 import org.bukkit.Material;
@@ -12,7 +13,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class LootConfig {
+public final class LootConfig implements LootProvider {
 
     private static final List<LootItem> FALLBACK = List.of(
             new LootItem(new ItemStack(Material.DIAMOND), 1.0, 1, 4),
@@ -61,8 +62,7 @@ public final class LootConfig {
                 double chance = entry.getDouble("chance", 0.0);
                 int minAmount = entry.getInt("min-amount", 1);
                 int maxAmount = entry.getInt("max-amount", minAmount);
-                ItemStack stack = new ItemStack(material, minAmount);
-                items.add(new LootItem(stack, chance, minAmount, maxAmount));
+                items.add(new LootItem(new ItemStack(material, minAmount), chance, minAmount, maxAmount));
             }
         }
         if (items.isEmpty()) {
@@ -70,6 +70,15 @@ public final class LootConfig {
             return new LootContainer(FALLBACK);
         }
         return new LootContainer(items);
+    }
+
+    @Override
+    public List<ItemStack> provideLoot() {
+        if (this.container == null || this.container.items().isEmpty()) {
+            this.plugin.getLogger().warning("!!! LOOT FILE IS DAMAGED !!! Returning emergency loot (DIAMOND).");
+            return List.of(new ItemStack(Material.DIAMOND, 1));
+        }
+        return this.container.generateRandomLoot(this.minSlots, this.maxSlots);
     }
 
     public LootContainer getContainer() {

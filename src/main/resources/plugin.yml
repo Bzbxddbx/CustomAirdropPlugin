@@ -9,3 +9,6 @@ commands:
   airdropstart:
     description: Start a custom airdrop event
     usage: /airdropstart
+  airdrop:
+    description: Manage the airdrop plugin
+    usage: /airdrop <reload>

@@ -1,7 +1,7 @@
 package Bzbxddbx.customAirdropPlugin.core;
 
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
-import Bzbxddbx.customAirdropPlugin.core.loot.LootContainer;
+import Bzbxddbx.customAirdropPlugin.api.loot.LootProvider;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Location;
@@ -16,9 +16,9 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class ActiveAirdrop implements Airdrop {
 
@@ -26,18 +26,14 @@ public final class ActiveAirdrop implements Airdrop {
 
     private final UUID id;
     private final Location location;
-    private final LootContainer container;
-    private final int minSlots;
-    private final int maxSlots;
+    private final LootProvider lootProvider;
     private AirdropState state;
     private TextDisplay hologram;
 
-    public ActiveAirdrop(Location location, LootContainer container, int minSlots, int maxSlots) {
+    public ActiveAirdrop(Location location, LootProvider lootProvider) {
         this.id = UUID.randomUUID();
         this.location = location;
-        this.container = container;
-        this.minSlots = minSlots;
-        this.maxSlots = maxSlots;
+        this.lootProvider = lootProvider;
         this.state = AirdropState.WAITING;
     }
 
@@ -62,10 +58,9 @@ public final class ActiveAirdrop implements Airdrop {
         this.state = AirdropState.ACTIVE;
         World world = this.location.getWorld();
         Location displayLocation = this.location.clone().add(0.5, 1.0, 0.5);
-        Component hologramText = MINI_MESSAGE.deserialize(
-                "<gold><b>[Мистический сундук]</b></gold>\n<gray>Кликни, чтобы открыть</gray>");
         this.hologram = world.spawn(displayLocation, TextDisplay.class, display -> {
-            display.text(hologramText);
+            display.text(MINI_MESSAGE.deserialize(
+                    "<gold><b>[Мистический сундук]</b></gold>\n<gray>Кликни, чтобы открыть</gray>"));
             display.setBillboard(Display.Billboard.CENTER);
             display.setLineWidth(400);
             display.setSeeThrough(true);
@@ -81,20 +76,32 @@ public final class ActiveAirdrop implements Airdrop {
         world.playSound(this.location, Sound.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 1.0f, 1.0f);
         world.spawnParticle(Particle.FLAME, this.location.clone().add(0.5, 0.5, 0.5), 40, 0.5, 0.5, 0.5, 0.05);
         if (this.location.getBlock().getState() instanceof Chest chest) {
-            List<ItemStack> loot = this.container.generateRandomLoot(this.minSlots, this.maxSlots);
-            List<Integer> slots = new ArrayList<>();
-            for (int i = 0; i < 27; i++) {
-                slots.add(i);
-            }
-            Collections.shuffle(slots);
-            for (int i = 0; i < loot.size() && i < slots.size(); i++) {
-                chest.getInventory().setItem(slots.get(i), loot.get(i));
+            chest.getInventory().clear();
+            List<ItemStack> loot = this.lootProvider.provideLoot();
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            List<Integer> occupied = new ArrayList<>();
+            for (ItemStack stack : loot) {
+                int slot = this.findFreeSlot(random, occupied);
+                if (slot >= 0) {
+                    chest.getInventory().setItem(slot, stack);
+                }
             }
         }
         if (this.hologram != null && this.hologram.isValid()) {
             this.hologram.text(MINI_MESSAGE.deserialize("<red><b>[ОТКРЫТ]</b></red>"));
         }
         this.state = AirdropState.OPENED;
+    }
+
+    private int findFreeSlot(ThreadLocalRandom random, List<Integer> occupied) {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            int slot = random.nextInt(27);
+            if (!occupied.contains(slot)) {
+                occupied.add(slot);
+                return slot;
+            }
+        }
+        return -1;
     }
 
     @Override
