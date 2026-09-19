@@ -17,6 +17,7 @@
     </properties>
 
     <build>
+        <finalName>CustomAirdropPlugin</finalName>
         <defaultGoal>clean package</defaultGoal>
         <plugins>
             <plugin>

@@ -1,0 +1,30 @@
+settings:
+  min-slots: 3
+  max-slots: 6
+
+loot:
+  diamond:
+    material: PUFFERFISH_BUCKET
+    chance: 0.5
+    min-amount: 1
+    max-amount: 4
+  emerald:
+    material: EMERALD
+    chance: 0.4
+    min-amount: 1
+    max-amount: 3
+  netherite-ingot:
+    material: NETHERITE_INGOT
+    chance: 0.2
+    min-amount: 1
+    max-amount: 2
+  golden-apple:
+    material: GOLDEN_APPLE
+    chance: 0.3
+    min-amount: 1
+    max-amount: 1
+  totem-of-undying:
+    material: TOTEM_OF_UNDYING
+    chance: 0.1
+    min-amount: 1
+    max-amount: 1

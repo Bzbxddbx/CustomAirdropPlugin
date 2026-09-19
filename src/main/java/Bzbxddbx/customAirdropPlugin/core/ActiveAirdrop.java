@@ -1,7 +1,7 @@
 package Bzbxddbx.customAirdropPlugin.core;
 
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
-import Bzbxddbx.customAirdropPlugin.config.ConfigSettings;
+import Bzbxddbx.customAirdropPlugin.core.loot.LootContainer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Location;
@@ -15,9 +15,10 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 public final class ActiveAirdrop implements Airdrop {
 
@@ -25,12 +26,18 @@ public final class ActiveAirdrop implements Airdrop {
 
     private final UUID id;
     private final Location location;
+    private final LootContainer container;
+    private final int minSlots;
+    private final int maxSlots;
     private AirdropState state;
     private TextDisplay hologram;
 
-    public ActiveAirdrop(Location location) {
+    public ActiveAirdrop(Location location, LootContainer container, int minSlots, int maxSlots) {
         this.id = UUID.randomUUID();
         this.location = location;
+        this.container = container;
+        this.minSlots = minSlots;
+        this.maxSlots = maxSlots;
         this.state = AirdropState.WAITING;
     }
 
@@ -74,13 +81,14 @@ public final class ActiveAirdrop implements Airdrop {
         world.playSound(this.location, Sound.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 1.0f, 1.0f);
         world.spawnParticle(Particle.FLAME, this.location.clone().add(0.5, 0.5, 0.5), 40, 0.5, 0.5, 0.5, 0.05);
         if (this.location.getBlock().getState() instanceof Chest chest) {
-            List<Material> loot = ConfigSettings.defaults().loot();
-            ThreadLocalRandom random = ThreadLocalRandom.current();
-            int amount = random.nextInt(3, 7);
-            for (int i = 0; i < amount; i++) {
-                Material material = loot.get(random.nextInt(loot.size()));
-                ItemStack stack = new ItemStack(material, random.nextInt(1, 6));
-                chest.getInventory().setItem(random.nextInt(27), stack);
+            List<ItemStack> loot = this.container.generateRandomLoot(this.minSlots, this.maxSlots);
+            List<Integer> slots = new ArrayList<>();
+            for (int i = 0; i < 27; i++) {
+                slots.add(i);
+            }
+            Collections.shuffle(slots);
+            for (int i = 0; i < loot.size() && i < slots.size(); i++) {
+                chest.getInventory().setItem(slots.get(i), loot.get(i));
             }
         }
         if (this.hologram != null && this.hologram.isValid()) {
