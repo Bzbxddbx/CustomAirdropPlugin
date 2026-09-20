@@ -1,6 +1,5 @@
 package Bzbxddbx.customAirdropPlugin.api;
 
-import Bzbxddbx.customAirdropPlugin.core.AirdropState;
 import org.bukkit.Location;
 
 import java.util.UUID;

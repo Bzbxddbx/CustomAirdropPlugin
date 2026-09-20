@@ -1,6 +1,7 @@
 package Bzbxddbx.customAirdropPlugin.core;
 
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
+import Bzbxddbx.customAirdropPlugin.api.AirdropState;
 import Bzbxddbx.customAirdropPlugin.api.loot.LootProvider;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;

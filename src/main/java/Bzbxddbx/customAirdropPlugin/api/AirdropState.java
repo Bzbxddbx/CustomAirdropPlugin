@@ -1,4 +1,4 @@
-package Bzbxddbx.customAirdropPlugin.core;
+package Bzbxddbx.customAirdropPlugin.api;
 
 public enum AirdropState {
     WAITING,

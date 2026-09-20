@@ -1,8 +1,9 @@
 package Bzbxddbx.customAirdropPlugin.listener;
 
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
-import Bzbxddbx.customAirdropPlugin.core.AirdropState;
-import Bzbxddbx.customAirdropPlugin.manager.EventManager;
+import Bzbxddbx.customAirdropPlugin.api.AirdropManager;
+import Bzbxddbx.customAirdropPlugin.api.AirdropState;
+import Bzbxddbx.customAirdropPlugin.util.LocationUtil;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
@@ -14,10 +15,10 @@ import java.util.Optional;
 
 public class PlayerInteractListener implements Listener {
 
-    private final EventManager eventManager;
+    private final AirdropManager airdropManager;
 
-    public PlayerInteractListener(EventManager eventManager) {
-        this.eventManager = eventManager;
+    public PlayerInteractListener(AirdropManager airdropManager) {
+        this.airdropManager = airdropManager;
     }
 
     @EventHandler
@@ -29,7 +30,7 @@ public class PlayerInteractListener implements Listener {
         if (block == null || block.getType() != Material.CHEST) {
             return;
         }
-        Optional<Airdrop> maybeAirdrop = this.eventManager.getActiveAirdrop();
+        Optional<Airdrop> maybeAirdrop = this.airdropManager.getActiveAirdrop();
         if (maybeAirdrop.isEmpty()) {
             return;
         }
@@ -37,7 +38,7 @@ public class PlayerInteractListener implements Listener {
         if (airdrop.getState() != AirdropState.ACTIVE) {
             return;
         }
-        if (block.getLocation().equals(airdrop.getLocation())) {
+        if (LocationUtil.isSameBlock(block.getLocation(), airdrop.getLocation())) {
             event.setCancelled(true);
             airdrop.open();
         }

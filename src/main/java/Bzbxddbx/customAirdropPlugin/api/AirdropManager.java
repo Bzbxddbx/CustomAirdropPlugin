@@ -4,7 +4,7 @@ import java.util.Optional;
 
 public interface AirdropManager {
 
-    void startEvent();
+    boolean startEvent();
 
     void stopEvent();
 
