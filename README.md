@@ -190,11 +190,12 @@ loot:
 Реализовано полностью: режимы появления (`falling` с анимацией падения и `instant`), лут по весам с reload на лету, защита сундука от ломания/взрывов/поршней, cooldown и auto-despawn, Brigadier-команды, `messages.yml`, защита от гонок через `EventEpoch`, самовосстановление голограммы, статистика игроков на встроенном SQLite (`/airdrop top` + `/airdrop me`), unit-тесты (`mvn verify`, 42 теста) и CI. Публичный API — `AirdropManager`, `Airdrop`, `LocationSearcher`, `LootProvider`, `AirdropSpawner`, `AirdropState`, `PlayerStatsStore`.
 
 ## Скриншоты
-
-> Заглушки — изображения зальёте сами (`screenshots/`).
-
-- `images/AirDropLoot.png` — настраиваемый лут сундука
-- `images/AirDropSpawn.png` — сундук с голограммой на точке спавна
-- `images/AirDropOpen.png` — сундук после открытия с лотом
-- `images/AirDropMessage.png` — стартовое сообщение с координатами в чате
+## настраиваемый лут сундука
+- (images/AirDropLoot.png)
+## сундук с голограммой на точке спавна
+- (images/AirDropSpawn.png)
+## сундук с голограммой на точке спавна
+- (images/AirDropOpen.png)
+## стартовое сообщение с координатами в чате
+- (images/AirDropMessage.png) 
 
