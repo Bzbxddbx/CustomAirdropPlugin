@@ -1,6 +1,6 @@
 # CustomAirdropPlugin
 
-Плагин для Paper (1.21+, API 26.3) с системой кастомных аирдропов: случайная безопасная точка на карте, сундук **падает с неба** (нативный `FallingBlock` + голограмма-`TextDisplay` + след частиц), открытие по ПКМ с лутом, тотальная защита сундука. Только современный Paper API: команды на **Brigadier**, планирование через **Paper Scheduler**, тексты — **Adventure/MiniMessage**.
+Плагин для Paper 26.2 с системой кастомных аирдропов: случайная безопасная точка на карте, сундук **падает с неба** (нативный `FallingBlock` + голограмма-`TextDisplay` + след частиц), открытие по ПКМ с лутом, тотальная защита сундука. Только современный Paper API: команды на **Brigadier**, планирование через **Paper Scheduler**, тексты — **Adventure/MiniMessage**.
 
 ## Возможности
 
@@ -12,15 +12,18 @@
 - **Без гонок**: `EventEpoch` — поколение запроса; устаревший асинхронный поиск или незавершённая анимация падения отбрасываются при `stop` / повторном `start`.
 - **Настройки (`config.yml`)**: радиус поиска, cooldown, автоудаление неоткрытого сундука, режим и параметры падения.
 - **Развязка**: слушатели и команды работают только с интерфейсами из `api`; `api` не зависит от `core`.
+- **Самовосстанавливающаяся голограмма**: если entity-вывеска (`TextDisplay`) удалена извне — выгрузка чанка, сторонний плагин — плагин пересоздаёт её на месте сундука под его состояние (ACTIVE → «Кликни, чтобы открыть», OPENED → «[ОТКРЫТ]»), а в консоль пишет `WARNING`.
+- **Статистика игроков (SQLite)**: каждый факт открытия аирдропа пишется в локальную базу (`database.db`). `/airdrop me` — личный счёт (доступен всем), `/airdrop top [n]` — лидерборд по открытым аирдропам (доступен операторам).
 
 ## Стек
 
 - Java 25 (record, pattern matching, `var`, `List.getFirst()`).
-- Paper API 26.3 (диапазон `[26.3.build,27)` в pom; версия `paper-api` — provided).
+- Paper API 26.2 (пин `26.2.build.129-stable` в pom; версия `paper-api` — provided).
 - **Brigadier**: `BasicCommand` + нативное `LiteralCommandNode`-дерево через `LifecycleEvents.COMMANDS` — никаких `CommandExecutor`/`TabCompleter`.
 - **Paper Scheduler**: `GlobalRegionScheduler` (`run` / `runDelayed` / `runAtFixedRate`) — никакого `Bukkit.getScheduler().runTask(...)`.
 - Adventure `Component` + `MiniMessage` (голограммы, чат, плейсхолдеры координат `<x>`, `<y>`, `<z>`).
-- Maven (`mvn clean package` → `target/CustomAirdropPlugin.jar`). `mvn verify` — сборка + unit-тесты (31 тест, без MockBukkit).
+- Maven (`mvn clean package` → `target/CustomAirdropPlugin.jar`). `mvn verify` — сборка + unit-тесты (42 теста, без MockBukkit).
+- **Встроенный SQLite**: `sqlite-jdbc` упаковывается в jar через `maven-shade-plugin` с relocation `org.sqlite` → `Bzbxddbx.customAirdropPlugin.libs.sqlite` (никаких конфликтов с другими плагинами).
 - CI — GitHub Actions: Temurin 25, jar на main.
 
 [![Build](https://github.com/anomalyco/CustomAirdropPlugin/actions/workflows/build.yml/badge.svg)](https://github.com/anomalyco/CustomAirdropPlugin/actions/workflows/build.yml)
@@ -35,10 +38,12 @@ api/                       — контракты плагина (не зави�
   location/LocationSearcher
   loot/LootProvider        — поставщик лута
   loot/AirdropSpawner      — стратегия появления (instant/falling) — OCP-шов
+  stats/PlayerStatsStore   — хранилище статистики игроков
+  stats/PlayerAirdropStats — record (ник, число открытий)
 core/                      — доменная модель и реализации
-  ActiveAirdrop            — конечный автомат состояния; делегирует голограмме, эффектам, раскладке
+  ActiveAirdrop            — конечный автомат состояния; делегирует голограмме, эффектам, раскладке; самовосстановление голограммы
   AsyncLocationSearcher    — координаты в supplyAsync, чтение блоков (isSolid) и возврат — на main-thread; точка — блок НАД поверхностью
-  hologram/AirdropHologram — жизненный цикл TextDisplay (спавн/текст/перемещение/удаление)
+  hologram/AirdropHologram — жизненный цикл TextDisplay (спавн/текст/перемещение/удаление/проверка isValid)
   fx/AirdropEffects        — звук и частицы при открытии
   loot/LootItem            — record (ItemStack, chance, min/max)
   loot/LootContainer       — выбор лута по весам, generateRandomLoot(min,max)
@@ -48,7 +53,7 @@ core/                      — доменная модель и реализац
   animation/FallingBlockRegistry    — реестр активных падающих блоков для слушателя
   InstantAirdropSpawner / FallingAirdropSpawner / AirdropSpawnerFactory
 manager/
-  EventManager             — оркестрация (cooldown, auto-despawn, token поколения)
+  EventManager             — оркестрация (cooldown, auto-despawn, периодический refresh голограммы, token поколения)
   EventEpoch               — поколение запроса (защита от гонок async-поиска)
 listener/
   PlayerInteractListener   — ПКМ по сундуку (ACTIVE) → open()
@@ -75,8 +80,9 @@ util/
 - **Без legacy Bukkit**: команды на Brigadier (LifecycleEvents.COMMANDS), задачи на `GlobalRegionScheduler`, привет-диспетчер команд через `CommandSourceStack`.
 - **Защита от гонок**: `EventEpoch` инвалидирует устаревший async-поиск и отменяет незавершённую анимацию падения (`AirdropSpawner.dispose()`); `CancellationException` при штатной отмене не логируется как ошибка.
 - **Падение с неба**: `FallPath` считает стартовую Y с запасом от потолка мира; `FallingAirdropAnimator` ведёт голограмму за FallingBlock и рисует след; приземление перехватывает `FallingBlockListener` (физика НЕ ставит ванильный блок), watchdog и проверка «пролетел мимо» форсят приземление в цель — сундук не теряется.
-- **Лут читается при старте/**reload, кэшируется в `LootContainer`; способность сундук получает ровно `min-slots`…`max-slots` стаков; выбор предметов — по весам `chance` с возвратом.
-- Тестовые seams без MockBukkit: `ConfigSettings.fromConfig(FileConfiguration)`, `Messages.fromConfig` → `render`, `SlotPlacer.occupy`, `FallPath.spawnY`, `EventEpoch`, `LootContainer.pickWeighted`.
+- **Лут читается при старте/reload, кэшируется в `LootContainer`; способность сундук получает ровно `min-slots`…`max-slots` стаков; выбор предметов — по весам `chance` с возвратом.
+- **Голограмма не «теряется» молча**: раз в 20 тиков (`GlobalRegionScheduler.runAtFixedRate`) `EventManager` зовёт `ActiveAirdrop.refreshHologramIfMissing()` — если вывеска исчезла (выгрузка чанка/сторонний плагин), а чанк сундука загружен, она пересоздаётся под текущее состояние с `WARNING`-логом. Домен остаётся чистым: метод возвращает результат (`boolean`), логгирование в менеджере; выбор текста вынесен в `hologramKeyFor(AirdropState)`.
+- Тестовые seams без MockBukkit: `ConfigSettings.fromConfig(FileConfiguration)`, `Messages.fromConfig` → `render`, `SlotPlacer.occupy`, `FallPath.spawnY`, `EventEpoch`, `LootContainer.pickWeighted`, `ActiveAirdrop.hologramKeyFor`.
 
 ## Команды
 
@@ -146,13 +152,13 @@ loot:
 
 ## Статус
 
-Реализовано полностью: режимы появления (`falling` с анимацией падения и `instant`), лут по весам с reload на лету, защита сундука от ломания/взрывов/поршней, cooldown и auto-despawn, Brigadier-команды, `messages.yml`, защита от гонок через `EventEpoch`, unit-тесты (`mvn verify`, 31 тест) и CI. Публичный API — `AirdropManager`, `Airdrop`, `LocationSearcher`, `LootProvider`, `AirdropSpawner`, `AirdropState`.
+Реализовано полностью: режимы появления (`falling` с анимацией падения и `instant`), лут по весам с reload на лету, защита сундука от ломания/взрывов/поршней, cooldown и auto-despawn, Brigadier-команды, `messages.yml`, защита от гонок через `EventEpoch`, самовосстановление голограммы, unit-тесты (`mvn verify`, 34 теста) и CI. Публичный API — `AirdropManager`, `Airdrop`, `LocationSearcher`, `LootProvider`, `AirdropSpawner`, `AirdropState`.
 
 ## Скриншоты
 
 > Заглушки — изображения зальёте сами (`screenshots/`).
 
-- `screenshots/airdrop-falling.png` — сундук падает с неба с голограммой и следом частиц
-- `screenshots/airdrop-live.png` — сундук с голограммой на точке спавна
-- `screenshots/loot-open.png` — сундук после открытия с лотом
-- `screenshots/message.png` — стартовое сообщение с координатами в чате
+- `![Снимок экрана 2026-09-24 121910.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121910.png)screenshots/airdrop-falling.png` — настраиваемый лут сундука
+- `![Снимок экрана 2026-09-24 121803.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121803.png)screenshots/airdrop-live.png` — сундук с голограммой на точке спавна
+- `![Снимок экрана 2026-09-24 121856.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121856.png)![Снимок экрана 2026-09-24 120241.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20120241.png)screenshots/loot-open.png` — сундук после открытия с лотом
+- `![Снимок экрана 2026-09-24 121629.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121629.png)screenshots/message.png` — стартовое сообщение с координатами в чате
