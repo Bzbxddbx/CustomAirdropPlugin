@@ -5,10 +5,13 @@ main: Bzbxddbx.customAirdropPlugin.CustomAirdropPlugin
 api-version: '26.2'
 load: POSTWORLD
 
-commands:
-  airdropstart:
-    description: Start a custom airdrop event
-    usage: /airdropstart
-  airdrop:
-    description: Manage the airdrop plugin
-    usage: /airdrop <reload>
+permissions:
+  airdrop.command.start:
+    description: Allows starting a custom airdrop event
+    default: op
+  airdrop.command.reload:
+    description: Allows reloading the loot configuration on the fly
+    default: op
+  airdrop.command.stop:
+    description: Allows stopping the active airdrop event
+    default: op

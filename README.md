@@ -1,79 +1,126 @@
 # CustomAirdropPlugin
 
-Плагин для Paper (1.21+) с системой кастомных аирдропов: случайная безопасная точка на карте, появление «Мистического сундука», голограмма-табличка над ним. Лут полностью настраивается через `loot.yml` и перезагружается на лету.
+Плагин для Paper (1.21+, API 26.3) с системой кастомных аирдропов: случайная безопасная точка на карте, сундук **падает с неба** (нативный `FallingBlock` + голограмма-`TextDisplay` + след частиц), открытие по ПКМ с лутом, тотальная защита сундука. Только современный Paper API: команды на **Brigadier**, планирование через **Paper Scheduler**, тексты — **Adventure/MiniMessage**.
 
 ## Возможности
 
-- **Как работает**: `/airdropstart` запускает событие — сервер асинхронно находит безопасную точку и спавнит сундук с голограммой. Игрок кликает ПКМ по сундуку в статусе `ACTIVE` — тот открывается с частицами и звуком, голограмма меняется на «ОТКРЫТ», а сундук заполняется лотом из конфига.
-- **Тотальная защита сундука**: блок нельзя сломать руками, он не уничтожается взрывами TNT/криперов (блок просто вычёркивается из списка взрыва) и не двигается/не ломается поршнями — поршень целиком отменяется (`BlockBreakListener`).
-- **Динамический лут (`loot.yml`)**: предметы, число слотов наград (`min-slots`/`max-slots`) и диапазоны стаков задаются в YAML. Файл читается один раз при старте — без I/O лагов в момент открытия. `/airdrop reload` перечитывает его без перезапуска сервера.
-- **Отказоустойчивость**: повреждённый/пустой файл даёт предупреждение в консоль и аварийный лут (1 алмаз); пустая секция `loot` — fallback DIAMOND/EMERALD.
-- **Настройки (`config.yml`)**: радиус поиска, cooldown запуска, автоудаление неоткрытого сундука, стартовое сообщение — всё из конфига, читается при старте.
-- **LootProvider**: `ActiveAirdrop` зависит только от интерфейса поставщика лута (`api/loot`), а не от конфига или плагина.
-- **Развязка**: слушатели и команды работают с `AirdropManager` (интерфейс), `api` не зависит от `core`.
-- **Тексты** — только Adventure `Component`, для голограмм и сообщений — MiniMessage.
-- **Голограмма** — нативный `TextDisplay` из Paper API, без сторонних библиотек.
-- **Поиск локации** — координаты генерируются асинхронно (`CompletableFuture.supplyAsync`), чтение блоков (`getHighestBlockAt`) и спавн — строго на main-thread.
+- **Как работает**: `/airdropstart` запускает событие — сервер асинхронно находит безопасную точку и в режиме `spawn-mode: falling` запускает анимацию: сундук (FallingBlock с blockdata `CHEST`) падает с неба вместе с голограммой и следом частиц. При приземлении ставится настоящий сундук, голограмма переключается в «активную», игрок кликает ПКМ — сундук открывается со звуком и частицами, голограмма меняется на «ОТКРЫТ», внутрь раскладывается лут из конфига.
+- **Тотальная защита сундука**: блок нельзя сломать руками, он вычёркивается из списка взрывов TNT/криперов и не двигается/не ломается поршнями (`BlockBreakListener`).
+- **Два режима появления** (`spawn-mode`): `falling` — падение с неба; `instant` — сундук сразу в точке. Это стратегии за интерфейсом `AirdropSpawner` — новые режимы добавляются без изменения менеджера и слушателей (OCP).
+- **Динамический лут (`loot.yml`)**: предметы, число слотов наград (`min-slots`/`max-slots`) и диапазоны стаков задаются в YAML. `chance` — относительный вес: предмет с `chance: 0.9` в 9 раз вероятнее, чем с `chance: 0.1`. Файл читается при старте и перечитывается `/airdrop reload` на лету (`LootConfig implements Reloadable`).
+- **Тексты — `messages.yml`**: все строки для игрока — MiniMessage-шаблоны из одного файла, дефолты встроены в код как защита от повреждённого конфига. В коде нет ни одной литеральной строки для игрока.
+- **Без гонок**: `EventEpoch` — поколение запроса; устаревший асинхронный поиск или незавершённая анимация падения отбрасываются при `stop` / повторном `start`.
+- **Настройки (`config.yml`)**: радиус поиска, cooldown, автоудаление неоткрытого сундука, режим и параметры падения.
+- **Развязка**: слушатели и команды работают только с интерфейсами из `api`; `api` не зависит от `core`.
 
 ## Стек
 
 - Java 25 (record, pattern matching, `var`, `List.getFirst()`).
-- Paper API 1.21+ (нативно `TextDisplay`, Adventure, MiniMessage).
-- Maven (`mvn clean package` → `target/CustomAirdropPlugin.jar`). Версия `paper-api` ограничена диапазоном `[26.3.build,27)` — без сюрпризов при мажорных обновлениях.
+- Paper API 26.3 (диапазон `[26.3.build,27)` в pom; версия `paper-api` — provided).
+- **Brigadier**: `BasicCommand` + нативное `LiteralCommandNode`-дерево через `LifecycleEvents.COMMANDS` — никаких `CommandExecutor`/`TabCompleter`.
+- **Paper Scheduler**: `GlobalRegionScheduler` (`run` / `runDelayed` / `runAtFixedRate`) — никакого `Bukkit.getScheduler().runTask(...)`.
+- Adventure `Component` + `MiniMessage` (голограммы, чат, плейсхолдеры координат `<x>`, `<y>`, `<z>`).
+- Maven (`mvn clean package` → `target/CustomAirdropPlugin.jar`). `mvn verify` — сборка + unit-тесты (31 тест, без MockBukkit).
+- CI — GitHub Actions: Temurin 25, jar на main.
+
+[![Build](https://github.com/anomalyco/CustomAirdropPlugin/actions/workflows/build.yml/badge.svg)](https://github.com/anomalyco/CustomAirdropPlugin/actions/workflows/build.yml)
 
 ## Архитектура
 
 ```
-api/                    — контракты плагина
-  AirdropState                — enum: WAITING, SPAWNING, ACTIVE, OPENED
-  Airdrop                     — интерфейс аирдропа (id, локация, состояние, spawn/open/remove)
-  AirdropManager              — управление событием (start/stop/getActive)
-  location/LocationSearcher   — поиск безопасной точки (World, CompletableFuture)
-  loot/LootProvider           — поставщик лута (provideLoot)
-core/                   — доменная модель и реализации
-  ActiveAirdrop               — реализация Airdrop: CHEST + TextDisplay, открытие, раскладка лута по слотам
-  AsyncLocationSearcher       — реализация LocationSearcher: кандидаты в supplyAsync, getHighestBlockAt на main-thread
-  loot/LootItem               — record: ItemStack, chance, minAmount, maxAmount
-  loot/LootContainer          — контейнер предметов, generateRandomLoot(minSlots, maxSlots)
-manager/                — EventManager: оркестрация события (guard, cooldown, auto-despawn), DI через конструктор
-listener/               — PlayerInteractListener (ПКМ по сундуку), BlockBreakListener (защита от ломания/взрывов/поршней)
-command/                — AirdropCommand (/airdropstart, /airdrop reload), AirdropTabCompleter (reload)
-config/                 — LootConfig (загрузчик loot.yml, implements LootProvider), ConfigSettings (config.yml)
-util/                   — LocationUtil (isSameBlock — сравнение блоков)
+api/                       — контракты плагина (не зависят от core)
+  Airdrop                  — id/location/state, spawn/open/remove
+  AirdropManager           — startEvent/stopEvent/getActiveAirdrop
+  AirdropState             — enum WAITING/SPAWNING/ACTIVE/OPENED
+  location/LocationSearcher
+  loot/LootProvider        — поставщик лута
+  loot/AirdropSpawner      — стратегия появления (instant/falling) — OCP-шов
+core/                      — доменная модель и реализации
+  ActiveAirdrop            — конечный автомат состояния; делегирует голограмме, эффектам, раскладке
+  AsyncLocationSearcher    — координаты в supplyAsync, чтение блоков (isSolid) и возврат — на main-thread; точка — блок НАД поверхностью
+  hologram/AirdropHologram — жизненный цикл TextDisplay (спавн/текст/перемещение/удаление)
+  fx/AirdropEffects        — звук и частицы при открытии
+  loot/LootItem            — record (ItemStack, chance, min/max)
+  loot/LootContainer       — выбор лута по весам, generateRandomLoot(min,max)
+  loot/SlotPlacer          — чистая раскладка стаков по слотам без перезаписи (тестируется без сервера)
+  animation/FallPath       — чистая математика стартовой высоты падения (тестируется)
+  animation/FallingAirdropAnimator — FallingBlock + движущаяся голограмма + след + watchdog таймаута
+  animation/FallingBlockRegistry    — реестр активных падающих блоков для слушателя
+  InstantAirdropSpawner / FallingAirdropSpawner / AirdropSpawnerFactory
+manager/
+  EventManager             — оркестрация (cooldown, auto-despawn, token поколения)
+  EventEpoch               — поколение запроса (защита от гонок async-поиска)
+listener/
+  PlayerInteractListener   — ПКМ по сундуку (ACTIVE) → open()
+  BlockBreakListener       — защита: ломание/взрывы/поршни
+  FallingBlockListener     — перехват приземления FallingBlock → аниматор
+command/
+  StartAirdropCommand      — /airdropstart (BasicCommand)
+  AirdropCommand           — /airdrop reload|stop (Brigadier-дерево)
+config/
+  ConfigSettings           — настройки (radius/cooldown/despawn/spawn-mode/fall)
+  LootConfig               — загрузчик loot.yml, implements LootProvider + Reloadable
+  Messages                 — шаблоны из messages.yml (MiniMessage)
+  SpawnMode                — enum INSTANT/FALLING
+util/
+  LocationUtil             — сравнение блоков по миру и целочисленным координатам
+  MainThread               — гарантированное выполнение на главном потоке
 ```
 
 ### Ключевые решения
 
-- DI через конструкторы: `EventManager(plugin, locationSearcher, lootConfig, settings)`, `AsyncLocationSearcher(plugin, settings)`, `ActiveAirdrop(location, lootProvider)` — зависимости на интерфейсы, статика `defaults()` в клиентах не используется.
-- Лут читается строго при старте/перезагрузке (`LootConfig.load()`), кэшируется в `LootContainer`.
-- Гарантированное наполнение: сундук получает ровно `min-slots`…`max-slots` стаков; `chance` в модели резервируется, выбор предметов равномерный.
-- Статусная машина предотвращает повторное открытие: при `OPENED` клик отдаётся ванильному сундуку.
-- Раскладка лута по 27 слотам без перезаписи (до 10 попыток поиска свободного слота на предмет).
-- `EventManager`: повторный `/airdropstart` сначала останавливает старый аирдроп; cooldown блокирует запуск чаще, чем `cooldown-seconds`; неоткрытый сундук автоудаляется через `despawn-minutes`.
-- Развязка через интерфейсы — замена `EventManager`, источника лута или поиска локации не требует трогать слушатели и команды.
+- **DIP**: `EventManager` и команды зависят от интерфейсов (`LocationSearcher`, `LootProvider`, `AirdropSpawner`, `Reloadable`, `Messages`) и `JavaPlugin`; инфраструктура Paper спрятана в `core`-имплементациях.
+- **SRP**: `ActiveAirdrop` — только state-machine; голограмма, эффекты и раскладка лута вынесены в отдельные узкие классы. Публичные API-геттеры не отдают мутабельный `Location` наружу (возвращается копия).
+- **OCP**: точка появления — стратегия `AirdropSpawner`; выбор через `AirdropSpawnerFactory` по `spawn-mode`. Добавление режима не трогает менеджер и слушателей.
+- **Без legacy Bukkit**: команды на Brigadier (LifecycleEvents.COMMANDS), задачи на `GlobalRegionScheduler`, привет-диспетчер команд через `CommandSourceStack`.
+- **Защита от гонок**: `EventEpoch` инвалидирует устаревший async-поиск и отменяет незавершённую анимацию падения (`AirdropSpawner.dispose()`); `CancellationException` при штатной отмене не логируется как ошибка.
+- **Падение с неба**: `FallPath` считает стартовую Y с запасом от потолка мира; `FallingAirdropAnimator` ведёт голограмму за FallingBlock и рисует след; приземление перехватывает `FallingBlockListener` (физика НЕ ставит ванильный блок), watchdog и проверка «пролетел мимо» форсят приземление в цель — сундук не теряется.
+- **Лут читается при старте/**reload, кэшируется в `LootContainer`; способность сундук получает ровно `min-slots`…`max-slots` стаков; выбор предметов — по весам `chance` с возвратом.
+- Тестовые seams без MockBukkit: `ConfigSettings.fromConfig(FileConfiguration)`, `Messages.fromConfig` → `render`, `SlotPlacer.occupy`, `FallPath.spawnY`, `EventEpoch`, `LootContainer.pickWeighted`.
 
 ## Команды
 
-| Команда            | Описание                      |
-|--------------------|-------------------------------|
-| `/airdropstart`    | Запустить событие аирдропа    |
-| `/airdrop reload`  | Перечитать `loot.yml` на лету |
-| (`/airdrop`)       | Вывести usage                 |
+| Команда           | Право                     | Описание                              |
+|-------------------|---------------------------|---------------------------------------|
+| `/airdropstart`   | `airdrop.command.start`   | Запустить событие аирдропа            |
+| `/airdrop reload` | `airdrop.command.reload`  | Перечитать `loot.yml` на лету         |
+| `/airdrop stop`   | `airdrop.command.stop`    | Остановить активное событие           |
+| (`/airdrop`)      | —                         | Usage                                 |
+
+Права по умолчанию — только у операторов; у игроков без прав — сообщение «У вас нет прав» из `messages.yml`. Команды выполнены нативным Brigadier-деревом Paper.
 
 ## Конфигурация
 
-`config.yml` — общие настройки:
+`config.yml` — настройки:
 
 ```yaml
 settings:
   search-radius: 1000        # радиус поиска от спавна мира
   cooldown-seconds: 60       # пауза между запусками
   despawn-minutes: 10        # автоудаление неоткрытого сундука
-  messages:
-    event-start: "<gold><b>[Аирдроп]</b> Мистический аирдроп начал падать! Координаты: X=<x>, Y=<y>, Z=<z></gold>"
+  spawn-mode: falling        # falling — падение с неба | instant — сразу
+  fall-distance: 40          # высота начала падения над точкой (блоков)
+  fall-timeout-seconds: 30   # форс-приземление, если падение «зависло»
 ```
 
-В сообщении `event-start` доступны плейсхолдеры координат: `<x>`, `<y>`, `<z>`.
+`messages.yml` — все тексты (MiniMessage), включая координаты в `chat.event-start` через плейсхолдеры `<x>`, `<y>`, `<z>`:
+
+```yaml
+hologram:
+  active: "<gold><b>[Мистический сундук]</b></gold>\n<gray>Кликни, чтобы открыть</gray>"
+  opened: "<red><b>[ОТКРЫТ]</b></red>"
+chat:
+  event-start: "<gold><b>[Аирдроп]</b> Мистический аирдроп начал падать! Координаты: X=<x>, Y=<y>, Z=<z></gold>"
+  event-stopped: "<yellow>[Аирдроп] Событие аирдропа завершено</yellow>"
+block:
+  cannot-break: "<red>Вы не можете сломать мистический сундук!</red>"
+command:
+  no-permission: "<red>У вас нет прав</red>"
+  airdrop-started: "<green>[Аирдроп] Событие запущено!</green>"
+  airdrop-cooldown: "<red>[Аирдроп] Подождите немного перед следующим запуском!</red>"
+  airdrop-reloaded: "<green>[Аирдроп] Конфигурация лута успешно перезагружена!</green>"
+  airdrop-usage: "<gray>Использование: /airdrop reload|stop</gray>"
+```
 
 `loot.yml` — лут и число слотов наград:
 
@@ -85,7 +132,7 @@ settings:
 loot:
   diamond:
     material: DIAMOND
-    chance: 0.5
+    chance: 0.5        # относительный вес: чем больше, тем чаще выпадает
     min-amount: 1
     max-amount: 4
   emerald:
@@ -95,6 +142,17 @@ loot:
     max-amount: 3
 ```
 
+`chance` трактуется как относительный вес при выборе с возвратом: `0.0` исключает предмет, при нулевой сумме весов — равномерный выбор.
+
 ## Статус
 
-Рабочая версия: лут и настройки из конфигов, защита сундука, диспетчер событий с cooldown и auto-despawn, развязка на интерфейсах. Из дорожной карты нереализованным осталась анимация «падения» сундука с высоты.
+Реализовано полностью: режимы появления (`falling` с анимацией падения и `instant`), лут по весам с reload на лету, защита сундука от ломания/взрывов/поршней, cooldown и auto-despawn, Brigadier-команды, `messages.yml`, защита от гонок через `EventEpoch`, unit-тесты (`mvn verify`, 31 тест) и CI. Публичный API — `AirdropManager`, `Airdrop`, `LocationSearcher`, `LootProvider`, `AirdropSpawner`, `AirdropState`.
+
+## Скриншоты
+
+> Заглушки — изображения зальёте сами (`screenshots/`).
+
+- `screenshots/airdrop-falling.png` — сундук падает с неба с голограммой и следом частиц
+- `screenshots/airdrop-live.png` — сундук с голограммой на точке спавна
+- `screenshots/loot-open.png` — сундук после открытия с лотом
+- `screenshots/message.png` — стартовое сообщение с координатами в чате

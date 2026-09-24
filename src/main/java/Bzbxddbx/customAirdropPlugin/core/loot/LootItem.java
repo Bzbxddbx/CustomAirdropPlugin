@@ -2,6 +2,7 @@ package Bzbxddbx.customAirdropPlugin.core.loot;
 
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 public record LootItem(ItemStack itemStack, double chance, int minAmount, int maxAmount) {
@@ -16,7 +17,11 @@ public record LootItem(ItemStack itemStack, double chance, int minAmount, int ma
     }
 
     public ItemStack generateStack() {
-        int amount = ThreadLocalRandom.current().nextInt(this.minAmount, this.maxAmount + 1);
+        return generateStack(ThreadLocalRandom.current());
+    }
+
+    public ItemStack generateStack(Random random) {
+        int amount = random.nextInt(this.minAmount, this.maxAmount + 1);
         ItemStack stack = this.itemStack.clone();
         stack.setAmount(amount);
         return stack;

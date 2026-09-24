@@ -2,7 +2,6 @@ package Bzbxddbx.customAirdropPlugin.core;
 
 import Bzbxddbx.customAirdropPlugin.api.location.LocationSearcher;
 import Bzbxddbx.customAirdropPlugin.config.ConfigSettings;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -14,6 +13,11 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Поиск безопасной точки: координаты-кандидаты генерируются асинхронно (чистая
+ * математика), чтение блоков и возврат результата — строго на главном потоке,
+ * чтобы не нарушать потокобезопасность мира.
+ */
 public final class AsyncLocationSearcher implements LocationSearcher {
 
     private static final int ATTEMPTS = 32;
@@ -46,16 +50,16 @@ public final class AsyncLocationSearcher implements LocationSearcher {
 
     private CompletableFuture<Location> resolveOnMainThread(World world, List<Candidate> candidates) {
         CompletableFuture<Location> result = new CompletableFuture<>();
-        Bukkit.getScheduler().runTask(this.plugin, () -> {
+        this.plugin.getServer().getGlobalRegionScheduler().run(this.plugin, task -> {
             for (Candidate candidate : candidates) {
                 Block top = world.getHighestBlockAt(candidate.x(), candidate.z());
                 Material type = top.getType();
-                if (!type.isAir() && type != Material.WATER && type != Material.LAVA) {
-                    result.complete(top.getLocation());
+                if (type.isSolid() && type != Material.WATER && type != Material.LAVA) {
+                    result.complete(top.getLocation().clone().add(0, 1, 0));
                     return;
                 }
             }
-            result.complete(world.getSpawnLocation().clone());
+            result.complete(world.getSpawnLocation().clone().add(0, 1, 0));
         });
         return result;
     }

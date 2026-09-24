@@ -1,0 +1,14 @@
+hologram:
+  active: "<gold><b>[Мистический сундук]</b></gold>\n<gray>Кликни, чтобы открыть</gray>"
+  opened: "<red><b>[ОТКРЫТ]</b></red>"
+chat:
+  event-start: "<gold><b>[Аирдроп]</b> Мистический аирдроп начал падать! Координаты: X=<x>, Y=<y>, Z=<z></gold>"
+  event-stopped: "<yellow>[Аирдроп] Событие аирдропа завершено</yellow>"
+block:
+  cannot-break: "<red>Вы не можете сломать мистический сундук!</red>"
+command:
+  no-permission: "<red>У вас нет прав</red>"
+  airdrop-started: "<green>[Аирдроп] Событие запущено!</green>"
+  airdrop-cooldown: "<red>[Аирдроп] Подождите немного перед следующим запуском!</red>"
+  airdrop-reloaded: "<green>[Аирдроп] Конфигурация лута успешно перезагружена!</green>"
+  airdrop-usage: "<gray>Использование: /airdrop reload|stop</gray>"

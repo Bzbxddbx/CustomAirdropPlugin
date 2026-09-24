@@ -13,12 +13,10 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class LootConfig implements LootProvider {
+public final class LootConfig implements LootProvider, Reloadable {
 
-    private static final List<LootItem> FALLBACK = List.of(
-            new LootItem(new ItemStack(Material.DIAMOND), 1.0, 1, 4),
-            new LootItem(new ItemStack(Material.EMERALD), 1.0, 1, 3)
-    );
+    record ParsedLoot(String material, double chance, int minAmount, int maxAmount) {
+    }
 
     private final JavaPlugin plugin;
     private LootContainer container;
@@ -40,56 +38,73 @@ public final class LootConfig implements LootProvider {
         if (this.maxSlots < this.minSlots) {
             this.maxSlots = this.minSlots;
         }
-        this.container = this.parseLoot(config.getConfigurationSection("loot"));
+        List<ParsedLoot> parsed = parseLoot(config.getConfigurationSection("loot"));
+        this.container = buildContainer(parsed);
         this.plugin.getLogger().info("Loot loaded: " + this.container.items().size() + " entries, slots "
                 + this.minSlots + "-" + this.maxSlots + ".");
     }
 
-    private LootContainer parseLoot(ConfigurationSection section) {
+    private LootContainer buildContainer(List<ParsedLoot> parsed) {
+        if (parsed == null) {
+            this.plugin.getLogger().warning("loot.yml: no valid loot entries found, using fallback loot.");
+            return fallback();
+        }
         List<LootItem> items = new ArrayList<>();
-        if (section != null) {
-            for (String key : section.getKeys(false)) {
-                ConfigurationSection entry = section.getConfigurationSection(key);
-                if (entry == null) {
-                    continue;
-                }
-                String materialName = entry.getString("material", "");
-                Material material = Material.matchMaterial(materialName);
-                if (material == null) {
-                    this.plugin.getLogger().warning("Unknown material in loot.yml: " + materialName);
-                    continue;
-                }
-                double chance = entry.getDouble("chance", 0.0);
-                int minAmount = entry.getInt("min-amount", 1);
-                int maxAmount = entry.getInt("max-amount", minAmount);
-                items.add(new LootItem(new ItemStack(material, minAmount), chance, minAmount, maxAmount));
+        for (ParsedLoot entry : parsed) {
+            Material material = Material.matchMaterial(entry.material());
+            if (material == null) {
+                this.plugin.getLogger().warning("Unknown material in loot.yml: " + entry.material());
+                continue;
             }
+            items.add(new LootItem(new ItemStack(material, entry.minAmount()),
+                    entry.chance(), entry.minAmount(), entry.maxAmount()));
         }
         if (items.isEmpty()) {
             this.plugin.getLogger().warning("loot.yml: no valid loot entries found, using fallback loot.");
-            return new LootContainer(FALLBACK);
+            return fallback();
         }
         return new LootContainer(items);
+    }
+
+    private static LootContainer fallback() {
+        return new LootContainer(List.of(
+                new LootItem(new ItemStack(Material.DIAMOND), 1.0, 1, 4),
+                new LootItem(new ItemStack(Material.EMERALD), 1.0, 1, 3)
+        ));
+    }
+
+    static List<ParsedLoot> parseLoot(ConfigurationSection section) {
+        if (section == null) {
+            return null;
+        }
+        List<ParsedLoot> entries = new ArrayList<>();
+        for (String key : section.getKeys(false)) {
+            ConfigurationSection entry = section.getConfigurationSection(key);
+            if (entry == null) {
+                continue;
+            }
+            String materialName = entry.getString("material", "");
+            if (materialName.isBlank()) {
+                continue;
+            }
+            double chance = entry.getDouble("chance", 0.0);
+            int minAmount = entry.getInt("min-amount", 1);
+            int maxAmount = entry.getInt("max-amount", minAmount);
+            entries.add(new ParsedLoot(materialName, chance, minAmount, maxAmount));
+        }
+        return entries.isEmpty() ? null : entries;
+    }
+
+    @Override
+    public void reload() {
+        this.load();
     }
 
     @Override
     public List<ItemStack> provideLoot() {
         if (this.container == null || this.container.items().isEmpty()) {
-            this.plugin.getLogger().warning("!!! LOOT FILE IS DAMAGED !!! Returning emergency loot (DIAMOND).");
-            return List.of(new ItemStack(Material.DIAMOND, 1));
+            return List.of();
         }
         return this.container.generateRandomLoot(this.minSlots, this.maxSlots);
-    }
-
-    public LootContainer getContainer() {
-        return this.container;
-    }
-
-    public int getMinSlots() {
-        return this.minSlots;
-    }
-
-    public int getMaxSlots() {
-        return this.maxSlots;
     }
 }

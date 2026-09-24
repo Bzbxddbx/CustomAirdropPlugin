@@ -1,42 +1,71 @@
 package Bzbxddbx.customAirdropPlugin.command;
 
 import Bzbxddbx.customAirdropPlugin.api.AirdropManager;
-import Bzbxddbx.customAirdropPlugin.config.LootConfig;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
+import Bzbxddbx.customAirdropPlugin.config.Messages;
+import Bzbxddbx.customAirdropPlugin.config.Reloadable;
+import Bzbxddbx.customAirdropPlugin.util.MainThread;
+import com.mojang.brigadier.tree.LiteralCommandNode;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+import io.papermc.paper.command.brigadier.Commands;
 import org.bukkit.command.CommandSender;
-import org.jetbrains.annotations.NotNull;
+import org.bukkit.plugin.java.JavaPlugin;
 
-public final class AirdropCommand implements CommandExecutor {
+/**
+ * {@code /airdrop reload} — перезагрузка лута на лету ({@code airdrop.command.reload}),
+ * {@code /airdrop stop} — остановка активного события ({@code airdrop.command.stop}).
+ * Строится нативным Brigadier-деревом Paper.
+ */
+public final class AirdropCommand {
 
+    public static final String RELOAD_PERMISSION = "airdrop.command.reload";
+    public static final String STOP_PERMISSION = "airdrop.command.stop";
+
+    private final JavaPlugin plugin;
+    private final Reloadable reloadable;
     private final AirdropManager airdropManager;
-    private final LootConfig lootConfig;
+    private final Messages messages;
 
-    public AirdropCommand(AirdropManager airdropManager, LootConfig lootConfig) {
+    public AirdropCommand(JavaPlugin plugin, Reloadable reloadable, AirdropManager airdropManager,
+                          Messages messages) {
+        this.plugin = plugin;
+        this.reloadable = reloadable;
         this.airdropManager = airdropManager;
-        this.lootConfig = lootConfig;
+        this.messages = messages;
     }
 
-    @Override
-    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
-                             @NotNull String label, @NotNull String[] args) {
-        if (command.getName().equalsIgnoreCase("airdropstart")) {
-            if (this.airdropManager.startEvent()) {
-                sender.sendMessage(Component.text("Аирдроп запущен!"));
-            } else {
-                sender.sendMessage(Component.text("Аирдроп пока недоступен, подождите немного!"));
-            }
-            return true;
+    public LiteralCommandNode<CommandSourceStack> build() {
+        return Commands.literal("airdrop")
+                .then(Commands.literal("reload").executes(context -> this.reload(context.getSource())))
+                .then(Commands.literal("stop").executes(context -> this.stop(context.getSource())))
+                .executes(context -> this.usage(context.getSource()))
+                .build();
+    }
+
+    private int reload(CommandSourceStack stack) {
+        CommandSender sender = stack.getSender();
+        if (!sender.hasPermission(RELOAD_PERMISSION)) {
+            sender.sendMessage(this.messages.render("command.no-permission"));
+            return 0;
         }
-        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
-            this.lootConfig.load();
-            sender.sendMessage(MiniMessage.miniMessage().deserialize(
-                    "<green><b>[Аирдроп]</b> Конфигурация лута успешно перезагружена на лету!</green>"));
-            return true;
+        MainThread.run(this.plugin, () -> {
+            this.reloadable.reload();
+            sender.sendMessage(this.messages.render("command.airdrop-reloaded"));
+        });
+        return 1;
+    }
+
+    private int stop(CommandSourceStack stack) {
+        CommandSender sender = stack.getSender();
+        if (!sender.hasPermission(STOP_PERMISSION)) {
+            sender.sendMessage(this.messages.render("command.no-permission"));
+            return 0;
         }
-        sender.sendMessage(Component.text("Использование: /airdrop reload"));
-        return true;
+        MainThread.run(this.plugin, () -> this.airdropManager.stopEvent());
+        return 1;
+    }
+
+    private int usage(CommandSourceStack stack) {
+        stack.getSender().sendMessage(this.messages.render("command.airdrop-usage"));
+        return 1;
     }
 }

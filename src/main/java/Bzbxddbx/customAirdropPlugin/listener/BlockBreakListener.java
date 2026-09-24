@@ -2,9 +2,8 @@ package Bzbxddbx.customAirdropPlugin.listener;
 
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
 import Bzbxddbx.customAirdropPlugin.api.AirdropManager;
+import Bzbxddbx.customAirdropPlugin.config.Messages;
 import Bzbxddbx.customAirdropPlugin.util.LocationUtil;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -17,15 +16,18 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Тотальная защита сундука: блок нельзя сломать, он вычёркивается из списка
+ * взрывов TNT/криперов и не перемещается/не ломается поршнями.
+ */
 public final class BlockBreakListener implements Listener {
 
-    private static final Component CANNOT_BREAK_MESSAGE = MiniMessage.miniMessage()
-            .deserialize("<red>Вы не можете сломать мистический сундук!</red>");
-
     private final AirdropManager airdropManager;
+    private final Messages messages;
 
-    public BlockBreakListener(AirdropManager airdropManager) {
+    public BlockBreakListener(AirdropManager airdropManager, Messages messages) {
         this.airdropManager = airdropManager;
+        this.messages = messages;
     }
 
     private Optional<Airdrop> activeAirdrop() {
@@ -47,7 +49,7 @@ public final class BlockBreakListener implements Listener {
         this.activeAirdrop().ifPresent(airdrop -> {
             if (LocationUtil.isSameBlock(event.getBlock().getLocation(), airdrop.getLocation())) {
                 event.setCancelled(true);
-                event.getPlayer().sendMessage(CANNOT_BREAK_MESSAGE);
+                event.getPlayer().sendMessage(this.messages.render("block.cannot-break"));
             }
         });
     }

@@ -3,39 +3,52 @@ package Bzbxddbx.customAirdropPlugin.core;
 import Bzbxddbx.customAirdropPlugin.api.Airdrop;
 import Bzbxddbx.customAirdropPlugin.api.AirdropState;
 import Bzbxddbx.customAirdropPlugin.api.loot.LootProvider;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import Bzbxddbx.customAirdropPlugin.config.Messages;
+import Bzbxddbx.customAirdropPlugin.core.fx.AirdropEffects;
+import Bzbxddbx.customAirdropPlugin.core.hologram.AirdropHologram;
+import Bzbxddbx.customAirdropPlugin.core.loot.SlotPlacer;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
-import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.Chest;
-import org.bukkit.entity.Display;
-import org.bukkit.entity.TextDisplay;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Доменная модель аирдропа. Отвечает только за конечный автомат состояния
+ * (WAITING → ACTIVE → OPENED / удаление) и делегирует визуализацию голограмме,
+ * эффектам и раскладке лута.
+ */
 public final class ActiveAirdrop implements Airdrop {
-
-    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
 
     private final UUID id;
     private final Location location;
     private final LootProvider lootProvider;
-    private AirdropState state;
-    private TextDisplay hologram;
+    private final AirdropEffects effects;
+    private final Messages messages;
+    private AirdropHologram hologram;
+    private AirdropState state = AirdropState.WAITING;
 
-    public ActiveAirdrop(Location location, LootProvider lootProvider) {
+    public ActiveAirdrop(Location location, LootProvider lootProvider, AirdropEffects effects, Messages messages) {
+        this(location, lootProvider, effects, messages, null);
+    }
+
+    /**
+     * @param hologram уже существующая голограмма (например, унаследованная от
+     *                 анимации падения); при {@code null} создаётся новая.
+     */
+    public ActiveAirdrop(Location location, LootProvider lootProvider, AirdropEffects effects, Messages messages,
+                         AirdropHologram hologram) {
         this.id = UUID.randomUUID();
-        this.location = location;
+        this.location = location.getBlock().getLocation();
         this.lootProvider = lootProvider;
-        this.state = AirdropState.WAITING;
+        this.effects = effects;
+        this.messages = messages;
+        this.hologram = hologram;
     }
 
     @Override
@@ -45,7 +58,7 @@ public final class ActiveAirdrop implements Airdrop {
 
     @Override
     public Location getLocation() {
-        return this.location;
+        return this.location.clone();
     }
 
     @Override
@@ -56,59 +69,68 @@ public final class ActiveAirdrop implements Airdrop {
     @Override
     public void spawn() {
         this.location.getBlock().setType(Material.CHEST);
+        if (this.hologram == null) {
+            this.hologram = new AirdropHologram(this.location.getWorld(), this.location,
+                    this.messages.render("hologram.active"));
+        } else {
+            this.hologram.setText(this.messages.render("hologram.active"));
+        }
         this.state = AirdropState.ACTIVE;
-        World world = this.location.getWorld();
-        Location displayLocation = this.location.clone().add(0.5, 1.0, 0.5);
-        this.hologram = world.spawn(displayLocation, TextDisplay.class, display -> {
-            display.text(MINI_MESSAGE.deserialize(
-                    "<gold><b>[Мистический сундук]</b></gold>\n<gray>Кликни, чтобы открыть</gray>"));
-            display.setBillboard(Display.Billboard.CENTER);
-            display.setLineWidth(400);
-            display.setSeeThrough(true);
-        });
     }
 
     @Override
     public void open() {
-        if (this.state == AirdropState.OPENED) {
+        if (this.state != AirdropState.ACTIVE) {
             return;
         }
-        World world = this.location.getWorld();
-        world.playSound(this.location, Sound.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 1.0f, 1.0f);
-        world.spawnParticle(Particle.FLAME, this.location.clone().add(0.5, 0.5, 0.5), 40, 0.5, 0.5, 0.5, 0.05);
+        this.effects.playOpen(this.location);
         if (this.location.getBlock().getState() instanceof Chest chest) {
-            chest.getInventory().clear();
-            List<ItemStack> loot = this.lootProvider.provideLoot();
-            ThreadLocalRandom random = ThreadLocalRandom.current();
-            List<Integer> occupied = new ArrayList<>();
-            for (ItemStack stack : loot) {
-                int slot = this.findFreeSlot(random, occupied);
-                if (slot >= 0) {
-                    chest.getInventory().setItem(slot, stack);
-                }
-            }
+            this.fillChest(chest.getInventory());
         }
-        if (this.hologram != null && this.hologram.isValid()) {
-            this.hologram.text(MINI_MESSAGE.deserialize("<red><b>[ОТКРЫТ]</b></red>"));
-        }
+        this.hologram.setText(this.messages.render("hologram.opened"));
         this.state = AirdropState.OPENED;
     }
 
-    private int findFreeSlot(ThreadLocalRandom random, List<Integer> occupied) {
-        for (int attempt = 0; attempt < 10; attempt++) {
-            int slot = random.nextInt(27);
-            if (!occupied.contains(slot)) {
-                occupied.add(slot);
-                return slot;
-            }
+    private void fillChest(Inventory inventory) {
+        inventory.clear();
+        List<ItemStack> loot = this.lootProvider.provideLoot();
+        List<Integer> slots = SlotPlacer.occupy(inventory.getSize(), 10, ThreadLocalRandom.current(), loot.size());
+        for (int index = 0; index < slots.size(); index++) {
+            inventory.setItem(slots.get(index), loot.get(index));
         }
-        return -1;
+    }
+
+    /**
+     * Re-создаёт голограмму, если она была удалена извне (выгрузка чанка,
+     * сторонний плагин). Делает это только при загруженном чанке сундука и
+     * возвращает {@code true}, если вывеска была пересоздана.
+     */
+    public boolean refreshHologramIfMissing() {
+        if (this.hologram != null && this.hologram.isValid()) {
+            return false;
+        }
+        World world = this.location.getWorld();
+        if (!world.isChunkLoaded(this.location.getBlockX() >> 4, this.location.getBlockZ() >> 4)) {
+            return false;
+        }
+        try {
+            this.hologram = new AirdropHologram(world, this.location,
+                    this.messages.render(hologramKeyFor(this.state)));
+        } catch (RuntimeException e) {
+            this.hologram = null;
+            return false;
+        }
+        return true;
+    }
+
+    static String hologramKeyFor(AirdropState state) {
+        return state == AirdropState.OPENED ? "hologram.opened" : "hologram.active";
     }
 
     @Override
     public void remove() {
-        if (this.hologram != null && this.hologram.isValid()) {
-            this.hologram.remove();
+        if (this.hologram != null) {
+            this.hologram.close();
         }
         this.hologram = null;
         this.location.getBlock().setType(Material.AIR);
