@@ -173,9 +173,15 @@ loot:
 
 ## Скриншоты
 
-> Заглушки — изображения зальёте сами (`screenshots/`).
-
-- `` — настраиваемый лут сундука
-- `` — сундук с голограммой на точке спавна
-- `` — сундук после открытия с лотом
-- `` — стартовое сообщение с координатами в чате
+<details>
+  <summary> Посмотреть скриншоты работы плагина (Нажмите, чтобы открыть)</summary>
+  <p align="center">
+    <img src="images/airdrop-falling.png" alt="Сундук падает с неба" width="600"/>
+    <br><br>
+    <img src="images/airdrop-live.png" alt="Сундук на точке спавна" width="600"/>
+    <br><br>
+    <img src="images/loot-open.png" alt="Содержимое сундука" width="600"/>
+    <br><br>
+    <img src="images/message.png" alt="Стартовое сообщение в чате" width="600"/>
+  </p>
+</details>
