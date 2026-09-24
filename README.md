@@ -52,6 +52,9 @@ core/                      — доменная модель и реализац
   animation/FallingAirdropAnimator — FallingBlock + движущаяся голограмма + след + watchdog таймаута
   animation/FallingBlockRegistry    — реестр активных падающих блоков для слушателя
   InstantAirdropSpawner / FallingAirdropSpawner / AirdropSpawnerFactory
+  stats/
+    SqlitePlayerStatsStore — SQLite: UPSERT открытий, топ с tie-break по времени
+    NoOpPlayerStatsStore   — fallback при сбое БД (плагин работает без статистики)
 manager/
   EventManager             — оркестрация (cooldown, auto-despawn, периодический refresh голограммы, token поколения)
   EventEpoch               — поколение запроса (защита от гонок async-поиска)
@@ -82,7 +85,8 @@ util/
 - **Падение с неба**: `FallPath` считает стартовую Y с запасом от потолка мира; `FallingAirdropAnimator` ведёт голограмму за FallingBlock и рисует след; приземление перехватывает `FallingBlockListener` (физика НЕ ставит ванильный блок), watchdog и проверка «пролетел мимо» форсят приземление в цель — сундук не теряется.
 - **Лут читается при старте/reload, кэшируется в `LootContainer`; способность сундук получает ровно `min-slots`…`max-slots` стаков; выбор предметов — по весам `chance` с возвратом.
 - **Голограмма не «теряется» молча**: раз в 20 тиков (`GlobalRegionScheduler.runAtFixedRate`) `EventManager` зовёт `ActiveAirdrop.refreshHologramIfMissing()` — если вывеска исчезла (выгрузка чанка/сторонний плагин), а чанк сундука загружен, она пересоздаётся под текущее состояние с `WARNING`-логом. Домен остаётся чистым: метод возвращает результат (`boolean`), логгирование в менеджере; выбор текста вынесен в `hologramKeyFor(AirdropState)`.
-- Тестовые seams без MockBukkit: `ConfigSettings.fromConfig(FileConfiguration)`, `Messages.fromConfig` → `render`, `SlotPlacer.occupy`, `FallPath.spawnY`, `EventEpoch`, `LootContainer.pickWeighted`, `ActiveAirdrop.hologramKeyFor`.
+- **Тестовые seams без MockBukkit**: `ConfigSettings.fromConfig(FileConfiguration)`, `Messages.fromConfig` → `render`, `SlotPlacer.occupy`, `FallPath.spawnY`, `EventEpoch`, `LootContainer.pickWeighted`, `ActiveAirdrop.hologramKeyFor`, `SqlitePlayerStatsStore(Connection)` — тесты на in-memory базе, без сервера.
+- **Статистика не роняет плагин**: одно подключение к SQLite на весь жизненный цикл (закрывается в `onDisable`), вызовы только с main-thread, методы `synchronized`; при сбое открытия БД — `NoOpPlayerStatsStore` + `severe`-лог, остальное продолжает работать. `/airdrop me` доступен всем игрокам (`default: true`), `/airdrop top` — операторам.
 
 ## Команды
 
@@ -91,9 +95,11 @@ util/
 | `/airdropstart`   | `airdrop.command.start`   | Запустить событие аирдропа            |
 | `/airdrop reload` | `airdrop.command.reload`  | Перечитать `loot.yml` на лету         |
 | `/airdrop stop`   | `airdrop.command.stop`    | Остановить активное событие           |
+| `/airdrop top [n]`| `airdrop.command.top`     | Топ игроков по открытым аирдропам     |
+| `/airdrop me`     | `airdrop.command.me`      | Личная статистика (доступна всем)     |
 | (`/airdrop`)      | —                         | Usage                                 |
 
-Права по умолчанию — только у операторов; у игроков без прав — сообщение «У вас нет прав» из `messages.yml`. Команды выполнены нативным Brigadier-деревом Paper.
+Права `start/reload/stop/top` по умолчанию — только у операторов; `me` — у всех игроков. У игроков без прав — сообщение «У вас нет прав» из `messages.yml`. Команды выполнены нативным Brigadier-деревом Paper.
 
 ## Конфигурация
 
@@ -107,6 +113,11 @@ settings:
   spawn-mode: falling        # falling — падение с неба | instant — сразу
   fall-distance: 40          # высота начала падения над точкой (блоков)
   fall-timeout-seconds: 30   # форс-приземление, если падение «зависло»
+
+stats:
+  file: database.db          # файл SQLite-базы статистики в папке плагина
+  top-default: 10            # размер топа по умолчанию (/airdrop top)
+  top-max: 20                # максимум для /airdrop top <n>
 ```
 
 `messages.yml` — все тексты (MiniMessage), включая координаты в `chat.event-start` через плейсхолдеры `<x>`, `<y>`, `<z>`:
@@ -125,7 +136,13 @@ command:
   airdrop-started: "<green>[Аирдроп] Событие запущено!</green>"
   airdrop-cooldown: "<red>[Аирдроп] Подождите немного перед следующим запуском!</red>"
   airdrop-reloaded: "<green>[Аирдроп] Конфигурация лута успешно перезагружена!</green>"
-  airdrop-usage: "<gray>Использование: /airdrop reload|stop</gray>"
+  airdrop-usage: "<gray>Использование: /airdrop reload|stop|top [count]|me</gray>"
+  players-only: "<red>Команда доступна только игрокам</red>"
+  airdrop-stats: "<green>[Аирдроп] <gold><player></gold> открыл аирдропов: <count></green>"
+  airdrop-stats-empty: "<gray>[Аирдроп] У вас пока нет открытых аирдропов</gray>"
+  airdrop-top-header: "<gold><b>Топ <count> по открытым аирдропам:</b></gold>"
+  airdrop-top-entry: "<white><place>. <aqua><player></aqua> — <green><opened></green></white>"
+  airdrop-top-empty: "<gray>[Аирдроп] Статистика пуста</gray>"
 ```
 
 `loot.yml` — лут и число слотов наград:
@@ -152,13 +169,13 @@ loot:
 
 ## Статус
 
-Реализовано полностью: режимы появления (`falling` с анимацией падения и `instant`), лут по весам с reload на лету, защита сундука от ломания/взрывов/поршней, cooldown и auto-despawn, Brigadier-команды, `messages.yml`, защита от гонок через `EventEpoch`, самовосстановление голограммы, unit-тесты (`mvn verify`, 34 теста) и CI. Публичный API — `AirdropManager`, `Airdrop`, `LocationSearcher`, `LootProvider`, `AirdropSpawner`, `AirdropState`.
+Реализовано полностью: режимы появления (`falling` с анимацией падения и `instant`), лут по весам с reload на лету, защита сундука от ломания/взрывов/поршней, cooldown и auto-despawn, Brigadier-команды, `messages.yml`, защита от гонок через `EventEpoch`, самовосстановление голограммы, статистика игроков на встроенном SQLite (`/airdrop top` + `/airdrop me`), unit-тесты (`mvn verify`, 42 теста) и CI. Публичный API — `AirdropManager`, `Airdrop`, `LocationSearcher`, `LootProvider`, `AirdropSpawner`, `AirdropState`, `PlayerStatsStore`.
 
 ## Скриншоты
 
 > Заглушки — изображения зальёте сами (`screenshots/`).
 
-- `![Снимок экрана 2026-09-24 121910.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121910.png)screenshots/airdrop-falling.png` — настраиваемый лут сундука
-- `![Снимок экрана 2026-09-24 121803.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121803.png)screenshots/airdrop-live.png` — сундук с голограммой на точке спавна
-- `![Снимок экрана 2026-09-24 121856.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121856.png)![Снимок экрана 2026-09-24 120241.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20120241.png)screenshots/loot-open.png` — сундук после открытия с лотом
-- `![Снимок экрана 2026-09-24 121629.png](../../Pictures/Screenshots/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-09-24%20121629.png)screenshots/message.png` — стартовое сообщение с координатами в чате
+- `` — настраиваемый лут сундука
+- `` — сундук с голограммой на точке спавна
+- `` — сундук после открытия с лотом
+- `` — стартовое сообщение с координатами в чате
