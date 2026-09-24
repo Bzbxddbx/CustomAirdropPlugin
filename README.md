@@ -191,11 +191,11 @@ loot:
 
 ## Скриншоты
 ## настраиваемый лут сундука
-- (images/AirDropLoot.png)
+- ![Настраиваемый лут](images/AirDropLoot.png)
 ## сундук с голограммой на точке спавна
-- (images/AirDropSpawn.png)
+- ![Сундук на точке спавна](images/AirDropSpawn.png)
 ## сундук с голограммой на точке спавна
-- (images/AirDropOpen.png)
+- ![Сундук после открытия](images/AirDropOpen.png)
 ## стартовое сообщение с координатами в чате
-- (images/AirDropMessage.png) 
+- ![Стартовое сообщение в чате](images/AirDropMessage.png) 
 
