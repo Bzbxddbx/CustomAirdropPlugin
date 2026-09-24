@@ -173,15 +173,8 @@ loot:
 
 ## Скриншоты
 
-<details>
-  <summary> Посмотреть скриншоты работы плагина (Нажмите, чтобы открыть)</summary>
-  <p align="center">
-    <img src="images/airdrop-falling.png" alt="Сундук падает с неба" width="600"/>
-    <br><br>
-    <img src="images/airdrop-live.png" alt="Сундук на точке спавна" width="600"/>
-    <br><br>
-    <img src="images/loot-open.png" alt="Содержимое сундука" width="600"/>
-    <br><br>
-    <img src="images/message.png" alt="Стартовое сообщение в чате" width="600"/>
-  </p>
-</details>
+- ![Настраиваемый лут](images/airdrop-falling.png)
+- ![Сундук на точке спавна](images/airdrop-live.png)
+- ![Сундук после открытия](images/loot-open.png)
+- ![Стартовое сообщение в чате](images/message.png)
+
