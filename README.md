@@ -173,8 +173,8 @@ loot:
 
 ## Скриншоты
 
-- ![Настраиваемый лут](images/airdrop-falling.png)
-- ![Сундук на точке спавна](images/airdrop-live.png)
-- ![Сундук после открытия](images/loot-open.png)
-- ![Стартовое сообщение в чате](images/message.png)
+- ![Настраиваемый лут](images/AirDropLoot.png)
+- ![Сундук на точке спавна](images/AirDropSpawn.png)
+- ![Сундук после открытия](images/AirDropOpen.png)
+- ![Стартовое сообщение в чате](AirDropMessage.png)
 
